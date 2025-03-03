@@ -2,7 +2,7 @@ import numpy as np
 from numpy import dot
 from scipy.linalg import inv,block_diag
 
-# initialize filter
+# initialize Kfilter
 dt = 0.1
 x = np.zeros((6,1))
 L = 15

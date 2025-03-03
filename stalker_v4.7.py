@@ -3,37 +3,19 @@ import numpy as np
 from dronekit import connect, VehicleMode, LocationGlobalRelative
 from pymavlink import mavutil
 import geotag
-import socket
-import struct
 import time
 import math
 
-vehicle = connect("127.0.0.1:14555", wait_ready=False)
+vehicle = connect("127.0.0.1:14555", wait_ready=False) #initalize vehicle object
 
-# Define the IP and port of the ground station
-# ground_station_ip = '192.168.191.112'
-# ground_station_port = 5780
+pan = 0         #initial gimbal pan
+tilt = -90      #initial gimbal tilt
+rot_time = 0    #gimbal rotation timer
 
-pp = 0
-tt = -90
-pan = 0
-pitch = -90
-rot_time = 0
-timerboi = 0
-dissy = []
-tets = []
-vecloclat = []
-vecloclon = []
-tim = 0
-# lats = [28.75377521,28.75363418,28.75347749,28.75329886,28.75313277,28.75305442,28.75293847,28.75291653,28.75292907,28.75309203,28.75328006,28.75347436,28.75361538,28.75387862,28.75410739,28.75430482,28.75439884,28.75439257,28.75437063,28.75413873,28.75385669]
-# lons = [77.11563280,77.11563995,77.11564710,77.11566497,77.11570429,77.11575433,77.11592949,77.11607247,77.11621903,77.11648713,77.11655504,77.11654789,77.11653360,77.11651930,77.11649070,77.11637989,77.11617614,77.11601885,77.11586515,77.11565425,77.11562565]
-
+#Hard coded default loop path if lost tracking, lats-lons to be stored in an array imported from JSON
 lats = [28.75455867,28.75395321,28.75390808,28.75369373,28.75348690,28.75309580]
 lons = [77.11538911,77.11480573,77.11475855,77.11454836,77.11432530,77.11395211]
 
-# Initialize the socket connection
-# client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-# client_socket.connect((ground_station_ip, ground_station_port))
 
 def arm_and_takeoff(targetAltitude):
     """
@@ -136,14 +118,6 @@ def drawBox(frame, bbox):
     cv2.rectangle(frame, (x,y), (x+w,y+h), (0,255,0), 2)
     return frame
 
-def send_video(frames):
-    # Encode the frame to JPEG format
-    _, encoded_frame = cv2.imencode('.jpg', frames)
-    # Get the size of the frame and pack it into a struct
-    frame_size = struct.pack('<L', len(encoded_frame))
-    # Send the frame size and then the frame data
-    client_socket.sendall(frame_size)
-    client_socket.sendall(encoded_frame.tobytes())
 
 def goto(location):
         """ Go to a location
@@ -155,19 +129,6 @@ def goto(location):
         vehicle.airspeed = 8
         vehicle.simple_goto(location)
 
-def goto2(location):
-        """ Go to a location
-        
-        Input:
-            location    - LocationGlobal or LocationGlobalRelative object
-        
-        """
-        vehicle.airspeed = 3
-        vehicle.simple_goto(location)
-        while True:
-          print("hello",distance_calculation(vehicle.location.global_relative_frame.lat,vehicle.location.global_relative_frame.lon,location.lat,location.lon))
-          if distance_calculation(vehicle.location.global_relative_frame.lat,vehicle.location.global_relative_frame.lon,location.lat,location.lon) <= 0.95*2:
-            break
 
 def send_global_velocity(velocity_x, velocity_y, velocity_z, duration):
     """
@@ -205,152 +166,137 @@ def send_global_velocity(velocity_x, velocity_y, velocity_z, duration):
     time.sleep(0.1)
 
 def theta_calculator(lat,lon,vehicle):
+  
   d = lon-vehicle.location.global_relative_frame.lon
   x = math.cos(math.radians(lat))*math.sin(math.radians(d))
   y = math.cos(math.radians(vehicle.location.global_relative_frame.lat))*math.sin(math.radians(lat))-math.sin(math.radians(vehicle.location.global_relative_frame.lat))*math.cos(math.radians(lat))*math.cos(math.radians(d))
   theta = math.degrees(math.atan2(x,y))
   return theta
 
-def calc_spd(lt,ln):
-    # lats = [28.75377521,28.75363418,28.75347749,28.75329886,28.75313277,28.75305442,28.75293847,28.75291653,28.75292907,28.75309203,28.75328006,28.75347436,28.75361538,28.75387862,28.75410739,28.75430482,28.75439884,28.75439257,28.75437063,28.75413873,28.75385669]
-    # lons = [77.11563280,77.11563995,77.11564710,77.11566497,77.11570429,77.11575433,77.11592949,77.11607247,77.11621903,77.11648713,77.11655504,77.11654789,77.11653360,77.11651930,77.11649070,77.11637989,77.11617614,77.11601885,77.11586515,77.11565425,77.11562565]   
-    
-    lats = [28.75455867,28.75395321,28.75390808,28.75369373,28.75348690,28.75309580]
-    lons = [77.11538911,77.11480573,77.11475855,77.11454836,77.11432530,77.11395211]
-    
-    l = len(lats)
-    s = 0
-    ds = []
-    for i in range(l):
-        dur = distance_calculation(lt,ln,lats[s],lons[s])
-        ds.append(dur)
-        s+=1
-    xl = min(ds)
-    index = ds.index(xl)
-    return(index)
+def calc_open_loop(lt,ln): 
+
+    min_dis = 0
+    for i in range(len(lats)):
+        d = distance_calculation(lt,ln,lats[i],lons[i])
+        if d < min_dis or min_dis == 0:
+            min_dis = d
+            index = i
+        
+    return index
     
 
-
-k = 0
+# open video stream and resize
 video = cv2.VideoCapture(0)
 video.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 video.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+alt = 15 #alititude
 ok, frame = video.read()
 # tracker = cv2.TrackerKCF_create()
 # bbox = (287,23,86,320)
 # ok = tracker.init(frame,bbox)
 tracker_locked=False
 
-arm_and_takeoff(15)
+arm_and_takeoff(alt)
 
-startkaro = LocationGlobalRelative(28.7536786,77.1156315,15)
+initial_point = LocationGlobalRelative(28.7536786,77.1156315,15) #initial goto point
 
-goto2(startkaro)
+vehicle.simple_goto(initial_point)
+while distance_calculation(vehicle.location.global_relative_frame.lat, vehicle.location.global_relative_frame.lon, initial_point.lat, initial_point.lon) >= 0.2:
+    pass
 
 initiate_search = False
-wait_detect = True
 
 while True:
+
     ok, frame = video.read()
     detected, corners_det, bbox, center_x, center_y = get_aruco(frame, 700)
     curr_time = time.time()
-    print("bbox",bbox)
-    # if not bbox==None:
-        # frame = drawBox(frame, bbox)
     
-
     if tracker_locked:
+            
             success, tracked_bbox =  tracker.update(frame)
             if success:
+
+                # Main follow code
+
                 initiate_search = False
                 wait_detect = True
                 counter = 1
-                #print('Tracked')
-                frame=drawBox(frame, tracked_bbox)
+                frame = drawBox(frame, tracked_bbox)
                 tracking = True
-                x_track,y_track,w,h = tracked_bbox
+                x_track, y_track, w, h = tracked_bbox
                 target_x = tracked_bbox[0] + w/2
-                target_y = tracked_bbox[1]+h/2
-                p,t = geotag.theta_calc_xy(target_x,target_y)
-                print(p,t)
-                # if (target_x <= 50 or target_x >= 590) or (target_y <= 50 or target_y >= 430):
+                target_y = tracked_bbox[1] + h/2
+                p,t = geotag.theta_calc_xy(target_x,target_y) #get target gimbal angle
+
                 if curr_time-rot_time >= 1:
-                   vehicle.gimbal.rotate(int(t+tt),0,0)
-                   pitch = t + tt
-                   pitch = 90 + pitch
-                   pan = p + pp
-                   pp = p + pp
-                   tt = t + tt
+                   
+                   tilt = t + tilt
+                   pan = p + pan
+                   vehicle.gimbal.rotate(int(tilt),0,0)
+                
                    rot_time = time.time()
 
-                lat1,lon1,distanceboi,teta = geotag.geo_tag_karo(314.70596524,target_y,vehicle.location.global_relative_frame.alt-1.9,pitch,p,vehicle.location.global_relative_frame.lat,vehicle.location.global_relative_frame.lon,vehicle.heading)
-                print("Lat: ",lat1,"Lon: ",lon1)
+                # Find aruco position in global frame
+                lat, lon, d = geotag.geo_tag_karo(target_y, vehicle.location.global_relative_frame.alt-1.9, tilt + 90, p, vehicle.location.global_relative_frame.lat, vehicle.location.global_relative_frame.lon, vehicle.heading)
+                target = LocationGlobalRelative(lat,lon,alt)
 
-                #if curr_time - timerboi >= 1:
-                 # if target_x >= 270 and target_x <= 370:
-                lat,lon = geotag.geotag(distanceboi,math.radians(vehicle.heading+p),vehicle.location.global_relative_frame.lat,vehicle.location.global_relative_frame.lon)
-                jao = LocationGlobalRelative(lat,lon,15)
-                if distanceboi >= 5:
-                    goto(jao)
-                vecloclat.append(lat)
-                vecloclon.append(lon)
-                np.savez('tuning_data4',vecloclat,vecloclon)
-                #timerboi = time.time()
+                # Follow
+                if d >= 5:
+                    goto(target)
 
+            else:
 
-
-            if not success:
-                #print('Tracking Lost')
+                print('Tracking Lost')
                 tracking = False
                 tracker_locked = False
                 initiate_search = True
-                sppeeed = vehicle.groundspeed
-                ind = calc_spd(vehicle.location.global_relative_frame.lat,vehicle.location.global_relative_frame.lon)
+
+                # Find index of closest waypoint in hard coded path
+                i_open_loop = calc_open_loop(vehicle.location.global_relative_frame.lat,vehicle.location.global_relative_frame.lon)
                 gimbal_rot = False
                 k = 0
+
     if detected:
-        print('locked ')
+        print('Locked!')
         tracker = cv2.TrackerKCF_create()
-        print("tracker", tracker)
-        ret=tracker.init(frame, bbox)
-        print("ret:",ret)
+        
+        ret = tracker.init(frame, bbox)
         if ret:
             tracker_locked = True
-        else:
-            print("nhi chal rha open cv check karo ")
+
         target_x = center_x
         target_y = center_y
+
     elif initiate_search == True:
+
         print("###SEARCH MODE###")
         
+        # Rotate gimbal to last known aruco location to retrack it
         if gimbal_rot == False:
-            pangle,tangle = geotag.theta_calc_xy(target_x,target_y)
-            vehicle.gimbal.rotate(int(tangle+tt),0,0)
-            pitch = tangle+tt
-            pitch = pitch + 90
-            tt = tangle + tt
+
+            p_angle,t_angle = geotag.theta_calc_xy(target_x,target_y)
+            tilt = t_angle + tilt
+            vehicle.gimbal.rotate(int(tilt),0,0)
             gimbal_rot = True
-        if curr_time - tim >= 3:
-            if k != 0:
-                wait_detect = False
             tim = time.time()
-            k += 1
-        
-        if wait_detect == False:
-            goloc = LocationGlobalRelative(lats[ind+counter],lons[ind+counter],15)
+
+        if curr_time - tim >= 3:
+    
+            goloc = LocationGlobalRelative(lats[i_open_loop+counter],lons[i_open_loop+counter], alt)
             vehicle.simple_goto(goloc)
             print("SENT GOTO")
-            if distance_calculation(vehicle.location.global_relative_frame.lat,vehicle.location.global_relative_frame.lon,lats[ind+counter],lons[ind+counter]) <= 2:
+
+            if distance_calculation(vehicle.location.global_relative_frame.lat, vehicle.location.global_relative_frame.lon, lats[i_open_loop+counter], lons[i_open_loop+counter]) <= 1:
                 counter += 1 
-                if (ind+counter) > (len(lats)-1):
-                    ind = 0
+                if (i_open_loop + counter) > (len(lats)-1):
+                    i_open_loop = 0
                     counter = 0
 
             
     else:
-        print("no detection")
-
-    # send_video(frame)
+        print("No Detection")
 
 
 
