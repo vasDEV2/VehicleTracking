@@ -66,9 +66,6 @@ Place an ArUco marker in the drone's field of view. The drone will:
 - Modify the hardcoded waypoints (`lats` and `lons`) for your area.
 - Ensure the camera is functional before running the script.
 
-## License
-
-This project is open-source. Feel free to modify and distribute.
 
 ## Authors
 
