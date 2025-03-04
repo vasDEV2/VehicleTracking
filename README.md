@@ -69,6 +69,6 @@ Place an ArUco marker in the drone's field of view. The drone will:
 
 ## Authors
 
-Developed by [V R Vasudevan].
+Developed by V R Vasudevan.
 
 
