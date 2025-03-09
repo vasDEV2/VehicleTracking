@@ -16,7 +16,7 @@ Stalker Drone v4.7 is a Python-based drone tracking system that utilizes ArUco m
 
 ## DEMO
 This is a clip of one of the low-speed flight test at the DTU sports ground. 
-![DEMO](./testing_dtu.gif)
+![Demo](DEMO/testing_dtu.gif)
 
 
 ## Dependencies
