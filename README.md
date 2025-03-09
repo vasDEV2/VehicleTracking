@@ -13,6 +13,12 @@ Stalker Drone v4.7 is a Python-based drone tracking system that utilizes ArUco m
 - **Waypoint Navigation**: If tracking is lost, follows a predefined search pattern.
 - **MAVLink Communication**: Uses pymavlink to send velocity and navigation commands.
 
+
+##DEMO
+This is a clip of one of the low-speed flight test at the DTU sports ground. 
+![DEMO](./testing_dtu.gif)
+
+
 ## Dependencies
 
 Ensure you have the following dependencies installed before running the script:
